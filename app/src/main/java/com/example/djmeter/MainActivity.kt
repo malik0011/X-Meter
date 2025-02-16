@@ -28,8 +28,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
@@ -64,6 +62,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -72,6 +71,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.djmeter.ui.screens.SplashScreen
 import com.example.djmeter.ui.theme.DjMeterTheme
 import com.example.djmeter.viewmodels.MainViewModel
 import kotlin.math.sin
@@ -81,11 +81,17 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             DjMeterTheme {
+                var showSplash by remember { mutableStateOf(true) }
+                
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    MainScreen(baseContext)
+                    if (showSplash) {
+                        SplashScreen(onSplashComplete = { showSplash = false })
+                    } else {
+                        MainScreen(baseContext)
+                    }
                 }
             }
         }
@@ -311,11 +317,12 @@ fun MainScreen(context: Context, viewModel: MainViewModel = viewModel()) {
 }
 
 @Composable
-private fun LogoSection() {
+fun LogoSection(
+    isShowName: Boolean = false,
+    modifier: Modifier = Modifier.size(120.dp)
+) {
     Box(
-        modifier = Modifier
-            .size(120.dp)
-            .padding(8.dp),
+        modifier = modifier.padding(8.dp),
         contentAlignment = Alignment.Center
     ) {
         // Outer circle with gradient
@@ -380,20 +387,22 @@ private fun LogoSection() {
     }
 
     // App name with modern typography
-    Text(
-        text = "DJ METER",
-        fontSize = 28.sp,
-        fontWeight = FontWeight.Bold,
-        color = Color.White,
-        letterSpacing = 2.sp,
-        style = TextStyle(
-            shadow = Shadow(
-                color = Color(0xFF00B4DB),
-                offset = Offset(0f, 2f),
-                blurRadius = 3f
+    if (isShowName) {
+        Text(
+            text = stringResource(id = R.string.app_name),
+            fontSize = 28.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color.White,
+            letterSpacing = 2.sp,
+            style = TextStyle(
+                shadow = Shadow(
+                    color = Color(0xFF00B4DB),
+                    offset = Offset(0f, 2f),
+                    blurRadius = 3f
+                )
             )
         )
-    )
+    }
 }
 
 @Composable
