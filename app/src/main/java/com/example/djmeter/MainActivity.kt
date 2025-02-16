@@ -1,28 +1,72 @@
 package com.example.djmeter
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.*
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -30,13 +74,6 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.djmeter.ui.theme.DjMeterTheme
 import com.example.djmeter.viewmodels.MainViewModel
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.foundation.Canvas
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.text.TextStyle
 import kotlin.math.sin
 
 class MainActivity : ComponentActivity() {
@@ -48,24 +85,41 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    MainScreen()
+                    MainScreen(baseContext)
                 }
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen(viewModel: MainViewModel = viewModel()) {
+fun MainScreen(context: Context, viewModel: MainViewModel = viewModel()) {
     var permissionGranted by remember { mutableStateOf(false) }
     val decibel by viewModel.decibelLevel.collectAsState()
     val isRecording by viewModel.isRecording.collectAsState()
+    var showBottomSheet by remember { mutableStateOf(false) }
+    
+    // Store last 50 readings for the graph
+    val readings = remember { mutableStateListOf<Float>() }
+    
+    // Update readings when decibel changes
+    LaunchedEffect(decibel) {
+        if (isRecording) {
+            if (readings.size >= 50) {
+                readings.removeAt(0)
+            }
+            readings.add(decibel)
+        }
+    }
 
-    // Animation for the decibel value
-    val animatedDecibel by animateFloatAsState(
-        targetValue = decibel,
-        animationSpec = tween(durationMillis = 100)
-    )
+    // Check if permission is already granted
+    LaunchedEffect(Unit) {
+        permissionGranted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -73,118 +127,185 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
         permissionGranted = isGranted
     }
 
-    LaunchedEffect(Unit) {
-        permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-    }
+    val bottomSheetState = rememberModalBottomSheetState()
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFF121212))
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Top
-    ) {
-        // Logo Section
-        Spacer(modifier = Modifier.height(32.dp))
-        LogoSection()
-        Spacer(modifier = Modifier.height(48.dp))
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Main content
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFF121212))
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Top
+        ) {
+            // Logo Section
+            Spacer(modifier = Modifier.height(32.dp))
+            LogoSection()
+            Spacer(modifier = Modifier.height(48.dp))
 
-        if (permissionGranted) {
-            Text(
-                "Sound Level",
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            // Animated meter visualization
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(30.dp)
-                    .padding(horizontal = 32.dp)
-                    .background(Color(0xFF2A2A2A), RoundedCornerShape(15.dp))
-            ) {
+            if (permissionGranted) {
+                Text(
+                    "Sound Level",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // Animated meter visualization
                 Box(
                     modifier = Modifier
-                        .fillMaxHeight()
-                        .width(((animatedDecibel / 120f) * 100f).coerceIn(0f, 100f).dp)
-                        .background(
-                            when {
-                                decibel >= 90 -> Color.Red
-                                decibel >= 70 -> Color.Yellow
-                                else -> Color.Green
-                            },
-                            RoundedCornerShape(15.dp)
+                        .fillMaxWidth()
+                        .height(30.dp)
+                        .padding(horizontal = 32.dp)
+                        .background(Color(0xFF2A2A2A), RoundedCornerShape(15.dp))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .width(((decibel / 120f) * 100f).coerceIn(0f, 100f).dp)
+                            .background(
+                                when {
+                                    decibel >= 90 -> Color.Red
+                                    decibel >= 70 -> Color.Yellow
+                                    else -> Color.Green
+                                },
+                                RoundedCornerShape(15.dp)
+                            )
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // Main decibel display
+                Text(
+                    "${decibel.toInt()} dB",
+                    fontSize = 64.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = when {
+                        decibel >= 90 -> Color.Red
+                        decibel >= 70 -> Color.Yellow
+                        else -> Color.Green
+                    }
+                )
+                
+                // Additional audio information
+                Column(
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .background(Color(0xFF2A2A2A), RoundedCornerShape(16.dp))
+                        .padding(16.dp)
+                ) {
+                    AudioInfoRow("Sampling Rate", "44.1 kHz")
+                    AudioInfoRow("Channel", "Mono")
+                    AudioInfoRow("Intensity", getIntensityDescription(decibel))
+                    AudioInfoRow("Update Rate", "10 Hz")
+                }
+                
+                Spacer(modifier = Modifier.height(32.dp))
+                
+                // Record button with pulsating animation
+                val infiniteTransition = rememberInfiniteTransition(label = "")
+                val scale by infiniteTransition.animateFloat(
+                    initialValue = 1f,
+                    targetValue = if (isRecording) 1.1f else 1f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(1000),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                    label = ""
+                )
+                
+                Button(
+                    onClick = {
+                        if (isRecording) viewModel.stopRecording()
+                        else viewModel.startRecording()
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isRecording) Color.Red else Color.Green
+                    ),
+                    modifier = Modifier
+                        .padding(8.dp)
+                        .scale(if (isRecording) scale else 1f)
+                ) {
+                    Text(if (isRecording) "Stop Recording" else "Start Recording")
+                }
+            } else {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        "Microphone permission is required",
+                        color = Color.Red,
+                        fontSize = 18.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Button(
+                        onClick = {
+                            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
                         )
+                    ) {
+                        Text("Grant Permission")
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+        }
+
+        // Floating Action Button
+        FloatingActionButton(
+            onClick = { showBottomSheet = true },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(16.dp),
+            containerColor = MaterialTheme.colorScheme.primary
+        ) {
+            BadgedBox(
+                badge = {
+                    if (isRecording) {
+                        Badge { Text("") }
+                    }
+                }
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_graph),
+                    contentDescription = "Show Graph"
                 )
             }
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            // Main decibel display
-            Text(
-                "${decibel.toInt()} dB",
-                fontSize = 64.sp,
-                fontWeight = FontWeight.Bold,
-                color = when {
-                    decibel >= 90 -> Color.Red
-                    decibel >= 70 -> Color.Yellow
-                    else -> Color.Green
+        }
+
+        // Bottom Sheet
+        if (showBottomSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showBottomSheet = false },
+                sheetState = bottomSheetState,
+                containerColor = Color(0xFF1E1E1E)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    DecibelGraph(
+                        readings = readings,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(300.dp)
+                    )
+                    Spacer(modifier = Modifier.height(32.dp))
                 }
-            )
-            
-            // Additional audio information
-            Column(
-                modifier = Modifier
-                    .padding(16.dp)
-                    .background(Color(0xFF2A2A2A), RoundedCornerShape(16.dp))
-                    .padding(16.dp)
-            ) {
-                AudioInfoRow("Sampling Rate", "44.1 kHz")
-                AudioInfoRow("Channel", "Mono")
-                AudioInfoRow("Intensity", getIntensityDescription(decibel))
-                AudioInfoRow("Update Rate", "10 Hz")
             }
-            
-            Spacer(modifier = Modifier.height(32.dp))
-            
-            // Record button with pulsating animation
-            val infiniteTransition = rememberInfiniteTransition(label = "")
-            val scale by infiniteTransition.animateFloat(
-                initialValue = 1f,
-                targetValue = if (isRecording) 1.1f else 1f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(1000),
-                    repeatMode = RepeatMode.Reverse
-                ),
-                label = ""
-            )
-            
-            Button(
-                onClick = {
-                    if (isRecording) viewModel.stopRecording()
-                    else viewModel.startRecording()
-                },
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isRecording) Color.Red else Color.Green
-                ),
-                modifier = Modifier
-                    .padding(8.dp)
-                    .scale(if (isRecording) scale else 1f)
-            ) {
-                Text(if (isRecording) "Stop Recording" else "Start Recording")
-            }
-        } else {
-            Text(
-                "Microphone permission is required",
-                color = Color.Red,
-                fontSize = 18.sp
-            )
         }
     }
 }
@@ -304,6 +425,75 @@ private fun getIntensityDescription(decibel: Float): String {
         decibel >= 50 -> "Moderate"
         decibel >= 30 -> "Quiet"
         else -> "Very Quiet"
+    }
+}
+
+@Composable
+private fun DecibelGraph(
+    readings: List<Float>,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFF2A2A2A)
+        ),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Text(
+                "Decibel History",
+                color = Color.White,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+            
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp)
+            ) {
+                if (readings.isNotEmpty()) {
+                    val path = Path()
+                    val points = readings.size
+                    val width = size.width
+                    val height = size.height
+                    val dx = width / (points - 1)
+                    
+                    // Draw grid lines
+                    drawLine(
+                        color = Color.Gray.copy(alpha = 0.3f),
+                        start = Offset(0f, height / 2),
+                        end = Offset(width, height / 2),
+                        strokeWidth = 1.dp.toPx()
+                    )
+                    
+                    // Draw graph line
+                    path.moveTo(0f, height - (height * (readings[0] / 120f)))
+                    
+                    for (i in 1 until points) {
+                        val x = i * dx
+                        val y = height - (height * (readings[i] / 120f))
+                        path.lineTo(x, y)
+                    }
+                    
+                    drawPath(
+                        path = path,
+                        color = Color(0xFF00B4DB),
+                        style = Stroke(
+                            width = 2.dp.toPx(),
+                            cap = StrokeCap.Round,
+                            join = StrokeJoin.Round
+                        )
+                    )
+                }
+            }
+        }
     }
 }
 
