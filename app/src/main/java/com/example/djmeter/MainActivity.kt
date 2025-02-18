@@ -75,6 +75,15 @@ import com.example.djmeter.ui.screens.SplashScreen
 import com.example.djmeter.ui.theme.DjMeterTheme
 import com.example.djmeter.viewmodels.MainViewModel
 import kotlin.math.sin
+import androidx.compose.material3.AlertDialog
+import android.content.Intent
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddCircle
+import androidx.core.content.FileProvider
+import java.io.File
+import android.widget.Toast
+import android.app.Activity
+import android.content.ActivityNotFoundException
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -90,7 +99,7 @@ class MainActivity : ComponentActivity() {
                     if (showSplash) {
                         SplashScreen(onSplashComplete = { showSplash = false })
                     } else {
-                        MainScreen(baseContext)
+                        MainScreen(this)
                     }
                 }
             }
@@ -105,6 +114,8 @@ fun MainScreen(context: Context, viewModel: MainViewModel = viewModel()) {
     val decibel by viewModel.decibelLevel.collectAsState()
     val isRecording by viewModel.isRecording.collectAsState()
     var showBottomSheet by remember { mutableStateOf(false) }
+    var showExportDialog by remember { mutableStateOf(false) }
+    val hasSessionData by viewModel.hasSessionData.collectAsState()
     
     // Store last 50 readings for the graph
     val readings = remember { mutableStateListOf<Float>() }
@@ -270,24 +281,51 @@ fun MainScreen(context: Context, viewModel: MainViewModel = viewModel()) {
         }
 
         // Floating Action Button
-        FloatingActionButton(
-            onClick = { showBottomSheet = true },
+        Row(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(16.dp),
-            containerColor = MaterialTheme.colorScheme.primary
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            BadgedBox(
-                badge = {
-                    if (isRecording) {
-                        Badge { Text("") }
+            // Download FAB
+            FloatingActionButton(
+                onClick = { 
+                    if (hasSessionData) {
+                        showExportDialog = true 
+                    } else {
+                        Toast.makeText(
+                            context,
+                            "No data available. Record some readings first!",
+                            Toast.LENGTH_SHORT
+                        ).show()
                     }
-                }
+                },
+                containerColor = MaterialTheme.colorScheme.secondary
             ) {
                 Icon(
-                    painter = painterResource(id = R.drawable.ic_graph),
-                    contentDescription = "Show Graph"
+                    imageVector = Icons.Default.AddCircle,
+                    contentDescription = "Export Graph",
+                    tint = if (hasSessionData) Color.White else Color.White.copy(alpha = 0.5f)
                 )
+            }
+            
+            // Existing Graph FAB
+            FloatingActionButton(
+                onClick = { showBottomSheet = true },
+                containerColor = MaterialTheme.colorScheme.primary
+            ) {
+                BadgedBox(
+                    badge = {
+                        if (isRecording) {
+                            Badge { Text("") }
+                        }
+                    }
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_graph),
+                        contentDescription = "Show Graph"
+                    )
+                }
             }
         }
 
@@ -312,6 +350,43 @@ fun MainScreen(context: Context, viewModel: MainViewModel = viewModel()) {
                     Spacer(modifier = Modifier.height(32.dp))
                 }
             }
+        }
+
+        // Export Dialog
+        if (showExportDialog) {
+            AlertDialog(
+                onDismissRequest = { showExportDialog = false },
+                title = { Text("Export Graph") },
+                text = { 
+                    Text(
+                        "Do you want to download the last recording session as PDF?\n" +
+                        "This will save ${viewModel.sessionReadings.value.size} readings."
+                    ) 
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showExportDialog = false
+                            viewModel.exportGraphToPdf(context)?.let { pdfPath ->
+                                sharePdf(context, pdfPath)
+                            } ?: run {
+                                Toast.makeText(
+                                    context,
+                                    "Failed to generate PDF. Please try again.",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        }
+                    ) {
+                        Text("Yes")
+                    }
+                },
+                dismissButton = {
+                    Button(onClick = { showExportDialog = false }) {
+                        Text("No")
+                    }
+                }
+            )
         }
     }
 }
@@ -503,6 +578,50 @@ private fun DecibelGraph(
                 }
             }
         }
+    }
+}
+
+private fun sharePdf(context: Context, filePath: String) {
+    try {
+        val file = File(filePath)
+        if (!file.exists()) {
+            Toast.makeText(
+                context,
+                "PDF file not found. Please try again.",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        val uri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.provider",
+            file
+        )
+        
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/pdf")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        
+        try {
+            context.startActivity(Intent.createChooser(intent, "Open PDF").apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            })
+        } catch (e: ActivityNotFoundException) {
+            Toast.makeText(
+                context,
+                "No PDF viewer app found. Please install one to view the PDF.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    } catch (e: Exception) {
+        Toast.makeText(
+            context,
+            "Error opening PDF: ${e.localizedMessage}",
+            Toast.LENGTH_LONG
+        ).show()
     }
 }
 
