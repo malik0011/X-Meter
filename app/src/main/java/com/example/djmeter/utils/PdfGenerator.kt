@@ -17,6 +17,11 @@ import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.itextpdf.layout.element.Table
+import com.itextpdf.layout.element.Cell
+import com.itextpdf.kernel.colors.ColorConstants
+import com.itextpdf.layout.properties.HorizontalAlignment
+import com.itextpdf.layout.properties.TextAlignment
 
 class PdfGenerator {
     fun generateDecibelGraphPdf(context: Context, readings: List<Float>): String {
@@ -30,27 +35,117 @@ class PdfGenerator {
         val document = Document(pdf)
 
         try {
-            // Add title
-            document.add(Paragraph("Decibel Readings Report"))
-            document.add(Paragraph("Generated on: $timeStamp"))
+            // Add title and header
+            document.add(Paragraph("Decibel Readings Report")
+                .setFontSize(24f)
+                .setBold()
+                .setTextAlignment(TextAlignment.CENTER))
             
-            // Create graph bitmap
+            document.add(Paragraph("Generated on: ${
+                SimpleDateFormat("dd MMMM yyyy, HH:mm:ss", Locale.getDefault()).format(Date())
+            }").setTextAlignment(TextAlignment.CENTER))
+            
+            document.add(Paragraph("\n"))
+            
+            // Create and add graph bitmap
             val graphBitmap = createGraphBitmap(readings)
-            
-            // Convert bitmap to PDF image
             val stream = ByteArrayOutputStream()
             graphBitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
             val imageData = ImageDataFactory.create(stream.toByteArray())
-            val image = Image(imageData)
-            
-            // Add image to document
+            val image = Image(imageData).setHorizontalAlignment(HorizontalAlignment.CENTER)
             document.add(image)
             
-            // Add readings data
-            document.add(Paragraph("Detailed Readings:"))
-            readings.forEachIndexed { index, value ->
-                document.add(Paragraph("Reading ${index + 1}: $value dB"))
+            // Add analysis section
+            document.add(Paragraph("\nSound Level Analysis")
+                .setFontSize(18f)
+                .setBold())
+
+            // Calculate statistics
+            val avgDecibel = readings.average()
+            val maxDecibel = readings.maxOrNull() ?: 0f
+            val minDecibel = readings.minOrNull() ?: 0f
+            
+            // Create statistics table
+            val table = Table(2).useAllAvailableWidth()
+            
+            // Add rows to table
+            addTableRow(table, "Average Sound Level", "${String.format("%.1f", avgDecibel)} dB")
+            addTableRow(table, "Maximum Sound Level", "${String.format("%.1f", maxDecibel)} dB")
+            addTableRow(table, "Minimum Sound Level", "${String.format("%.1f", minDecibel)} dB")
+            addTableRow(table, "Duration", "${readings.size / 10} seconds")
+            
+            // Sound level classification
+            val classification = when {
+                avgDecibel < 50 -> "Low (Safe Level)"
+                avgDecibel < 70 -> "Moderate (Normal Level)"
+                avgDecibel < 85 -> "High (Potentially Harmful)"
+                else -> "Very High (Dangerous Level)"
             }
+            addTableRow(table, "Sound Classification", classification)
+            
+            // Environment assessment
+            val environment = when {
+                avgDecibel < 40 -> "Quiet Environment (Library-like)"
+                avgDecibel < 60 -> "Normal Indoor Environment"
+                avgDecibel < 80 -> "Busy Urban Environment"
+                else -> "Industrial or Very Noisy Environment"
+            }
+            addTableRow(table, "Environment Assessment", environment)
+            
+            document.add(table)
+            
+            // Add recommendations section
+            document.add(Paragraph("\nRecommendations")
+                .setFontSize(18f)
+                .setBold())
+            
+            val recommendations = when {
+                avgDecibel > 85 -> listOf(
+                    "• Hearing protection is strongly recommended",
+                    "• Limit exposure time",
+                    "• Consider noise reduction measures"
+                )
+                avgDecibel > 70 -> listOf(
+                    "• Monitor exposure duration",
+                    "• Take regular breaks from this environment",
+                    "• Be aware of potential hearing fatigue"
+                )
+                else -> listOf(
+                    "• Sound levels are within safe limits",
+                    "• Continue monitoring for any significant changes",
+                    "• Maintain current acoustic environment"
+                )
+            }
+            
+            recommendations.forEach { rec ->
+                document.add(Paragraph(rec))
+            }
+            
+            // Add detailed readings in a collapsible section
+            document.add(Paragraph("\nDetailed Readings")
+                .setFontSize(18f)
+                .setBold())
+            
+            // Create readings table
+            val readingsTable = Table(3).useAllAvailableWidth()
+            addTableHeader(readingsTable, "Time", "Reading (dB)", "Level")
+            
+            readings.forEachIndexed { index, value ->
+                val timeStamp = index * 100 // 100ms intervals
+                val level = when {
+                    value < 50 -> "Low"
+                    value < 70 -> "Moderate"
+                    value < 85 -> "High"
+                    else -> "Very High"
+                }
+                addReadingRow(readingsTable, 
+                    "${timeStamp/1000}.${timeStamp%1000}s", 
+                    String.format("%.1f", value), 
+                    level
+                )
+            }
+            
+            document.add(readingsTable)
             
         } finally {
             document.close()
@@ -59,19 +154,65 @@ class PdfGenerator {
         return filePath.absolutePath
     }
 
+    private fun addTableRow(table: Table, label: String, value: String) {
+        table.addCell(Cell().add(Paragraph(label).setBold()))
+        table.addCell(Cell().add(Paragraph(value)))
+    }
+
+    private fun addTableHeader(table: Table, vararg headers: String) {
+        headers.forEach { header ->
+            table.addHeaderCell(Cell()
+                .setBackgroundColor(ColorConstants.LIGHT_GRAY)
+                .add(Paragraph(header).setBold()))
+        }
+    }
+
+    private fun addReadingRow(table: Table, time: String, value: String, level: String) {
+        table.addCell(Cell().add(Paragraph(time)))
+        table.addCell(Cell().add(Paragraph(value)))
+        table.addCell(Cell().add(Paragraph(level)))
+    }
+
     private fun createGraphBitmap(readings: List<Float>): Bitmap {
         val width = 800
         val height = 400
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        val paint = Paint().apply {
-            color = android.graphics.Color.BLUE
+        
+        // Fill background
+        val backgroundPaint = Paint().apply {
+            color = android.graphics.Color.WHITE
+            style = Paint.Style.FILL
+        }
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), backgroundPaint)
+        
+        // Draw grid lines
+        val gridPaint = Paint().apply {
+            color = android.graphics.Color.LTGRAY
+            strokeWidth = 1f
+            style = Paint.Style.STROKE
+        }
+        
+        // Horizontal grid lines
+        for (i in 0..4) {
+            val y = height * i / 4f
+            canvas.drawLine(0f, y, width.toFloat(), y, gridPaint)
+        }
+        
+        // Vertical grid lines
+        for (i in 0..8) {
+            val x = width * i / 8f
+            canvas.drawLine(x, 0f, x, height.toFloat(), gridPaint)
+        }
+        
+        // Draw graph line
+        val linePaint = Paint().apply {
+            color = android.graphics.Color.rgb(29, 92, 219) // Your app's blue color
             strokeWidth = 3f
             style = Paint.Style.STROKE
             isAntiAlias = true
         }
 
-        // Draw graph
         val path = Path()
         val points = readings.size
         val dx = width.toFloat() / (points - 1)
@@ -84,7 +225,7 @@ class PdfGenerator {
             path.lineTo(x, y)
         }
 
-        canvas.drawPath(path, paint)
+        canvas.drawPath(path, linePaint)
         return bitmap
     }
 } 

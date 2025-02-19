@@ -84,6 +84,10 @@ import java.io.File
 import android.widget.Toast
 import android.app.Activity
 import android.content.ActivityNotFoundException
+import androidx.compose.animation.animateContentSize
+import androidx.compose.material.icons.filled.Add
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -116,6 +120,7 @@ fun MainScreen(context: Context, viewModel: MainViewModel = viewModel()) {
     var showBottomSheet by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
     val hasSessionData by viewModel.hasSessionData.collectAsState()
+    val recordingTime by viewModel.recordingTime.collectAsState()
     
     // Store last 50 readings for the graph
     val readings = remember { mutableStateListOf<Float>() }
@@ -249,6 +254,14 @@ fun MainScreen(context: Context, viewModel: MainViewModel = viewModel()) {
                         .scale(if (isRecording) scale else 1f)
                 ) {
                     Text(if (isRecording) "Stop Recording" else "Start Recording")
+                }
+
+                if (isRecording) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    RecordingTimer(
+                        time = recordingTime,
+                        modifier = Modifier.animateContentSize()
+                    )
                 }
             } else {
                 Column(
@@ -622,6 +635,39 @@ private fun sharePdf(context: Context, filePath: String) {
             "Error opening PDF: ${e.localizedMessage}",
             Toast.LENGTH_LONG
         ).show()
+    }
+}
+
+@Composable
+fun RecordingTimer(time: Long, modifier: Modifier = Modifier) {
+    val hours = time / 3600
+    val minutes = (time % 3600) / 60
+    val seconds = time % 60
+    
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f),
+        tonalElevation = 4.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = "Recording Timer",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(16.dp)
+            )
+            
+            Text(
+                text = String.format("%02d:%02d:%02d", hours, minutes, seconds),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 

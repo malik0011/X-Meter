@@ -9,6 +9,9 @@ import com.example.djmeter.utils.PdfGenerator
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val audioRecorder = AudioRecorder(application.applicationContext)
@@ -31,6 +34,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _hasSessionData = MutableStateFlow(false)
     val hasSessionData: StateFlow<Boolean> = _hasSessionData
 
+    private val _recordingTime = MutableStateFlow(0L)
+    val recordingTime: StateFlow<Long> = _recordingTime
+    
+    private var timerJob: Job? = null
+
     fun startRecording() {
         if (_isRecording.value) return
         
@@ -46,6 +54,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         _isRecording.value = true
+        startTimer()
+    }
+
+    private fun startTimer() {
+        _recordingTime.value = 0L
+        timerJob = viewModelScope.launch {
+            while (isActive) {
+                delay(1000) // Update every second
+                _recordingTime.value += 1
+            }
+        }
     }
 
     fun stopRecording() {
@@ -54,6 +73,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         audioRecorder.stopRecording()
         _isRecording.value = false
         _decibelLevel.value = 0f
+        timerJob?.cancel()
+        _recordingTime.value = 0L
         
         // Save the readings to session data
         _sessionReadings.value = _decibelReadings.value.toList()
